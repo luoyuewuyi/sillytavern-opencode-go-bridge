@@ -19,7 +19,7 @@ async function walk(dir) {
 const docs = ['README.md', 'INSTALL.md', 'COMPATIBILITY.md', 'API.md', 'RESEARCH.md', 'TESTING.md', 'CHANGELOG.md', 'LICENSE'];
 const evidence = ['evidence/go-models-2026-10-23.json'];
 const frontend = FRONTEND_FILES; const server = await walk('server');
-const source = [...docs, ...frontend, ...server, ...await walk('tests'), ...await walk('scripts'), ...await walk('install'), ...await walk('.github'), ...evidence, 'install.sh', 'install.ps1', 'release-manifest.json', 'package.json', '.gitignore'];
+const source = [...docs, ...frontend, ...server, ...await walk('tests'), ...await walk('scripts'), ...await walk('install'), ...await walk('.github'), ...evidence, 'install.sh', 'install.ps1', 'release-manifest.json', 'package.json', '.gitignore', '.gitattributes'];
 async function zip(entries) {
     const locals = []; const centrals = []; let offset = 0;
     for (const [name, path] of entries.sort((a, b) => a[0].localeCompare(b[0]))) {
@@ -40,7 +40,7 @@ async function zip(entries) {
 }
 const distributions = [
     [`opencode-go-bridge-${version}-source.zip`, source.map(p => [`opencode-go-bridge/${p}`, p])],
-    [`opencode-go-bridge-${version}-install.zip`, [...docs, ...frontend, ...server, ...await walk('install'), 'install.sh', 'install.ps1', 'package.json', 'release-manifest.json', ...evidence].map(p => [p, p])],
+    [`opencode-go-bridge-${version}-install.zip`, [...docs, ...frontend, ...server, ...await walk('install'), 'install.sh', 'install.ps1', 'package.json', '.gitattributes', 'release-manifest.json', ...evidence].map(p => [p, p])],
 ];
 await mkdir(join(root, 'dist'), { recursive: true }); const sums = [];
 for (const [name, entries] of distributions) {
