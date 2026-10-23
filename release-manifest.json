@@ -19,7 +19,7 @@
     ".gitattributes": "74f066599d3fe2817756c3e532a869d370d4294c5c0a188487da2855f9b2378e",
     "install.sh": "81dfb2adebd13b0f7c5993cee005c500ecaa358fa7450eb0891c04b640732c3a",
     "install.ps1": "1ed9001337618f7563eaeeb0aec841ba3975909348af3a10449d7d9dd6f6a313",
-    "install/install.mjs": "e4825ee392e17fef606ed9cc64ee6151dac8b0e389be8161d42e7dc2bb03959d",
+    "install/install.mjs": "bca3b02cbf295e08db639a7e62ef46e74cbd2e623a4310e1501bff3e250d99bf",
     "install/layout.mjs": "ea5d7ad723abb583d5f46850d407e77c4c4a3e158de88446f5bfdd40d009e24a"
   }
 }

@@ -159,7 +159,8 @@ export async function runInstaller(options = {}, io = {}) {
     const state = join(root, STATE_DIR); await safePath(state); await safePath(join(state, 'transactions'));
     const action = options.rollback ? 'rollback' : options.uninstall ? 'uninstall' : 'install';
     if (options.rollback && !/^[0-9TZ-]+-[a-f0-9]{12}$/.test(options.rollback)) fail('Invalid rollback transaction ID.');
-    const components = options.rollback ? (await readRecord(join(state, 'transactions', options.rollback), root)).components : options.backendOnly ? ['server'] : ['server', 'frontend'];
+    const rollbackRecord = options.rollback ? await readRecord(join(state, 'transactions', options.rollback), root) : null;
+    const components = rollbackRecord ? rollbackRecord.components : options.backendOnly ? ['server'] : ['server', 'frontend'];
     for (const key of components) {
         const target = join(root, COMPONENTS[key].relative); await safePath(target);
         if (inside(source, target) || inside(target, source)) fail('Installer source overlaps a destination. For a frontend Git checkout inside SillyTavern, use --backend-only.');
@@ -179,7 +180,7 @@ export async function runInstaller(options = {}, io = {}) {
         }
     }
     const plan = { action, version: release.version, root, targets: components.map(k => join(root, COMPONENTS[k].relative)),
-        configChange, serverPluginsEnabled: config.enabled, backupDirectory: state, rollbackId: options.rollback ?? null };
+        configChange: rollbackRecord ? !!rollbackRecord.config && hash(configBytes) === rollbackRecord.config.after && rollbackRecord.config.before !== rollbackRecord.config.after : configChange, serverPluginsEnabled: config.enabled, backupDirectory: state, rollbackId: options.rollback ?? null };
     io.log(JSON.stringify(plan, null, 2));
     if (options.dryRun) { io.log('DRY RUN: no directories, config, backups or lock files created.'); return plan; }
     if (action === 'install' && !config.enabled && !options.enableServerPlugins) fail('Server plugins are disabled. Review and add --enable-server-plugins, or enable them manually first.');

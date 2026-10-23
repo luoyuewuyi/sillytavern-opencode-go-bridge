@@ -152,6 +152,6 @@ test('rollback dry-run reports exactly the recorded components and changes nothi
     const root = await fixture(t); const installed = await runInstaller({ ...opts(root), backendOnly: true });
     const before = await readFile(join(root, 'config.yaml'), 'utf8');
     const plan = await runInstaller({ stRoot: root, rollback: installed.transaction, dryRun: true });
-    assert.deepEqual(plan.targets, [dest(root, 'server')]); assert.equal(await readFile(join(root, 'config.yaml'), 'utf8'), before);
+    assert.deepEqual(plan.targets, [dest(root, 'server')]); assert.equal(plan.configChange, true); assert.equal(await readFile(join(root, 'config.yaml'), 'utf8'), before);
     assert.ok(await present(join(dest(root, 'server'), 'index.mjs')));
 });
