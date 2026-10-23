@@ -1,0 +1,10 @@
+{
+  "display_name": "OpenCode Go Bridge (Preview)",
+  "loading_order": 90,
+  "requires": [],
+  "optional": [],
+  "js": "index.js",
+  "css": "style.css",
+  "author": "OpenCode Go Bridge contributors",
+  "version": "0.2.0"
+}

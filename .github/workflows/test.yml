@@ -1,0 +1,27 @@
+name: Mock and installer tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        node: [20, 22]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Verify release manifest is current
+        run: |
+          node scripts/prepare-release.mjs
+          git diff --exit-code -- release-manifest.json
+      - name: Run all portable tests without dependencies
+        run: node --test tests/*.test.mjs
+      - name: Build distribution
+        run: node scripts/build.mjs

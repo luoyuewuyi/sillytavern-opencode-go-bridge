@@ -1,0 +1,17 @@
+{
+  "name": "sillytavern-opencode-go-bridge",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test tests/*.test.mjs",
+    "test:local-reference": "node --test tests/local-reference.mjs",
+    "build": "node scripts/build.mjs",
+    "prepare:release": "node scripts/prepare-release.mjs",
+    "test:installer": "node --test tests/installer.test.mjs"
+  },
+  "license": "UNLICENSED"
+}
