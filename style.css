@@ -1,9 +1,0 @@
-#st-go-bridge { margin: .75em 0; padding: .8em; border: 1px solid var(--SmartThemeBorderColor, #888); border-radius: 8px; }
-#st-go-bridge summary { cursor: pointer; font-weight: 600; }
-#st-go-bridge label { display: block; margin: .7em 0; }
-#st-go-bridge input:not([type=checkbox]), #st-go-bridge select { display: block; width: 100%; margin-top: .3em; padding: .4em; }
-#st-go-bridge .go-buttons { display: flex; flex-wrap: wrap; gap: .4em; }
-#st-go-bridge .go-notice { border-left: 3px solid #dba94c; padding-left: .65em; }
-#st-go-bridge .go-url { display: block; overflow-wrap: anywhere; user-select: all; }
-#st-go-bridge output { display: block; padding: .6em 0; }
-#st-go-bridge [hidden] { display: none !important; }

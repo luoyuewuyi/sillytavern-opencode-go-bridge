@@ -1,10 +1,15 @@
 {
-  "display_name": "OpenCode Go Bridge (Preview)",
+  "display_name": "OpenCode Go Headers (Preview)",
   "loading_order": 90,
   "requires": [],
   "optional": [],
   "js": "index.js",
-  "css": "style.css",
   "author": "OpenCode Go Bridge contributors",
-  "version": "0.2.0"
+  "version": "0.3.0",
+  "hooks": {
+    "enable": "enable",
+    "disable": "disable",
+    "delete": "disable",
+    "clean": "disable"
+  }
 }

@@ -1,84 +1,115 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { GO_BASE, GO_MARKER, isGoBase, createRoutedFetch, createSessionIds } from '../routing.mjs';
-import { createActivation } from '../activation.mjs';
-import { ReplayCache } from '../server/replay.mjs';
-import { base } from './helpers.mjs';
-const origin = 'https://st.example';
-const payload = () => ({ ...base(), chat_completion_source: 'custom', custom_url: GO_MARKER });
-function harness(state = {}) {
-    const calls = []; const current = { active: true, token: 'TEST_BROWSER_TOKEN', ...state };
-    const fetch = createRoutedFetch({ originalFetch: async (...args) => { calls.push(args); return Response.json({ ok: true }); }, origin, getState: () => current,
-        requestHeaders: () => ({ 'X-CSRF-Token': 'TEST_CSRF' }), conversationId: () => 'synthetic-conversation' });
-    return { fetch, calls, current };
-}
-test('native custom generation routes Go only and strips host credentials', async () => {
-    const h = harness(); const controller = new AbortController();
-    await h.fetch('/api/backends/chat-completions/generate', { method: 'POST', signal: controller.signal, body: JSON.stringify({ ...payload(), proxy_password: 'DO_NOT_FORWARD', secret_id: 'OLD_SECRET_REF' }) });
-    const [url, options] = h.calls[0]; assert.equal(url, '/api/plugins/opencode-go-bridge/generate');
-    assert.ok(!options.body.includes('DO_NOT_FORWARD')); assert.ok(!options.body.includes('OLD_SECRET_REF'));
-    assert.equal(options.headers.get('x-csrf-token'), 'TEST_CSRF'); controller.abort(); assert.equal(options.signal.aborted, true);
+import { GO_CHAT_BASE, GO_MODELS_BASE, GENERATE_PATH, STATUS_PATH, USER_AGENT, addGoHeaders, createSessionIds } from '../routing.mjs';
+import { harness, send, payload, sentBody, origin } from './helpers.mjs';
+
+test('installation is immediate and only headers change on a native Custom Go request', async () => {
+    const h = harness(); const original = payload({ temperature: 0.8, reasoning_effort: 'medium', tools: [{ type: 'function', function: { name: 'test' } }], custom_include_body: 'custom: value' });
+    await send(h, original, { headers: { 'X-CSRF-Token': 'FAKE_CSRF' }, credentials: 'same-origin' });
+    const sent = sentBody(h); const added = JSON.parse(sent.custom_include_headers); delete sent.custom_include_headers;
+    assert.deepEqual(sent, original); assert.equal(added['User-Agent'], USER_AGENT); assert.match(added['x-opencode-session'], /^stgo_[a-f0-9]{32}$/);
+    assert.equal(added.Authorization, undefined); assert.equal(h.calls[0][1].headers['X-CSRF-Token'], 'FAKE_CSRF');
 });
-test('LWB host openai/reverse_proxy shape routes without leaking proxy password', async () => {
-    const h = harness(); await h.fetch('/api/backends/chat-completions/generate', { method: 'POST', body: JSON.stringify({ ...base(), chat_completion_source: 'openai', reverse_proxy: GO_BASE, proxy_password: 'OLD_FAKE_KEY' }) });
-    assert.equal(h.calls[0][0], '/api/plugins/opencode-go-bridge/generate'); assert.ok(!h.calls[0][1].body.includes('OLD_FAKE_KEY'));
-});
-test('direct SDK Request object supported only after opt-in', async () => {
-    const req = new Request(GO_BASE + '/chat/completions', { method: 'POST', headers: { Authorization: 'Bearer OLD_FAKE_KEY' }, body: JSON.stringify(base()) });
-    const off = harness(); await off.fetch(req); assert.equal(off.calls[0][0], req);
-    const on = harness({ direct: true }); await on.fetch(req); assert.equal(on.calls[0][0], '/api/plugins/opencode-go-bridge/generate');
-    assert.equal(on.calls[0][1].headers.get('authorization'), null); assert.ok(!req.bodyUsed);
-});
-test('other providers, schemes, userinfo, ports and suffix hosts are untouched', async () => {
-    for (const url of ['https://opencode.ai.evil.test/inference/go/openai/v1', 'http://opencode.ai/inference/go/openai/v1', 'https://u:p@opencode.ai/inference/go/openai/v1', GO_BASE + '?x=1', GO_BASE + '#x', 'https://opencode.ai:8443/inference/go/openai/v1', 'https://api.openai.com/v1']) {
-        assert.equal(isGoBase(url), false); const h = harness(); const options = { method: 'POST', body: JSON.stringify({ ...payload(), custom_url: url }) };
-        await h.fetch('/api/backends/chat-completions/generate', options); assert.equal(h.calls[0][1], options);
+test('status supports current Chat and official directory bases without URL rewriting or model filtering', async () => {
+    const h = harness();
+    for (const base of [GO_CHAT_BASE, GO_MODELS_BASE]) {
+        const data = payload({ custom_url: base }); await h.scope.fetch(STATUS_PATH, { method: 'POST', body: JSON.stringify(data) });
+        assert.equal(sentBody(h).custom_url, base); assert.equal(JSON.parse(sentBody(h).custom_include_headers)['User-Agent'], USER_AGENT);
     }
 });
-test('disconnected Go fails locally; other requests preserve exact call identity', async () => {
-    const h = harness({ token: null }); const result = await h.fetch('/api/backends/chat-completions/generate', { method: 'POST', body: JSON.stringify(payload()) });
-    assert.equal(result.status, 401); assert.equal(h.calls.length, 0);
-    const options = { method: 'POST', body: '{}' }; await h.fetch('/api/other', options); assert.equal(h.calls[0][1], options);
+for (const url of ['https://api.openai.com/v1', 'https://opencode.ai/zen/v1', 'https://opencode.ai/zen/go/v1', 'https://opencode.ai/inference/openai/v1', 'http://opencode.ai/inference/go/openai/v1', 'https://opencode.ai.evil.test/inference/go/openai/v1', 'https://u:p@opencode.ai/inference/go/openai/v1', GO_CHAT_BASE + '?x=1', GO_CHAT_BASE + '#x', GO_CHAT_BASE + '/extra', 'https://opencode.ai:8443/inference/go/openai/v1', 'https://opencode.ai/a/../inference/go/openai/v1', 'https://opencode.ai/inference/go/openai/%76%31']) {
+    test(`unrelated/near-match URL has zero mutation: ${url}`, async () => {
+        const h = harness({ parseYaml: () => { throw new Error('must not parse'); } });
+        const init = { method: 'POST', headers: { test: 'keep' }, body: ' { "chat_completion_source":"custom", "custom_url":' + JSON.stringify(url) + ', "custom_include_headers":"unparsed: text" } ' };
+        await h.scope.fetch(GENERATE_PATH, init); assert.equal(h.calls[0][0], GENERATE_PATH); assert.equal(h.calls[0][1], init);
+    });
+}
+test('non-Custom native paths, direct URLs, unrelated origins, query URLs and malformed bodies pass exactly', async () => {
+    const h = harness();
+    const cases = [[GENERATE_PATH, { chat_completion_source: 'openai', reverse_proxy: GO_CHAT_BASE, proxy_password: 'FAKE_ST_PROXY_PASSWORD' }],
+        [GENERATE_PATH, payload({ chat_completion_source: 'claude' })], [GO_CHAT_BASE + '/chat/completions', payload()],
+        ['https://other.test' + GENERATE_PATH, payload()], [GENERATE_PATH + '?x=1', payload()], ['/api/other', payload()]];
+    for (const [url, data] of cases) { const init = { method: 'POST', body: JSON.stringify(data) }; await h.scope.fetch(url, init); assert.equal(h.calls.at(-1)[1], init); }
+    const init = { method: 'POST', body: 'not JSON' }; await h.scope.fetch(GENERATE_PATH, init); assert.equal(h.calls.at(-1)[1], init);
 });
-test('model choice preserved; missing model default and manual effort scoped to Go', async () => {
-    const h = harness({ model: 'gpt-6-luna', reasoningMode: 'custom', reasoningEffort: 'high' });
-    await h.fetch('/api/backends/chat-completions/generate', { method: 'POST', body: JSON.stringify(payload()) });
-    const body = JSON.parse(h.calls[0][1].body).payload; assert.equal(body.model, 'glm-5.2'); assert.equal(body.reasoning_effort, 'high');
+test('other-provider large payload and Request object preserve original argument identity', async () => {
+    const h = harness(); const req = new Request(origin + GENERATE_PATH, { method: 'POST', body: JSON.stringify(payload({ custom_url: 'https://else.test', messages: ['x'.repeat(9 * 1024 * 1024)] })) });
+    await h.scope.fetch(req); assert.equal(h.calls[0][0], req); assert.equal(req.bodyUsed, false);
 });
-test('session IDs contain no private identifiers and are stable per conversation', () => {
-    const ids = createSessionIds(); const a = ids.forConversation('private-title'); assert.equal(a, ids.forConversation('private-title'));
-    assert.notEqual(a, ids.forConversation('another-title')); assert.ok(!a.includes('private')); assert.throws(() => ids.forConversation(null));
+test('JSON headers preserve Authorization and all unrelated values; UA is truthful and case-deduplicated', () => {
+    const raw = JSON.stringify({ Authorization: 'Bearer FAKE_EXPLICIT_USER_HEADER', 'X-Test': 'keep', 'user-agent': 'custom-old', 'USER-AGENT': 'other-old', 'X-OpenCode-Session': 'existing-session:123' });
+    const result = JSON.parse(addGoHeaders(raw, 'generated-session', JSON.parse));
+    assert.equal(result.Authorization, 'Bearer FAKE_EXPLICIT_USER_HEADER'); assert.equal(result['X-Test'], 'keep');
+    assert.equal(result['User-Agent'], USER_AGENT); assert.equal(result['x-opencode-session'], 'existing-session:123'); assert.equal(Object.keys(result).length, 4);
 });
-test('activation creates recovery + dedicated Go profile; restore does not overwrite later provider', async () => {
-    const manager = { profiles: [{ id: 'old', name: 'Existing provider' }], selectedProfile: 'old' }; const history = [];
-    const context = { extensionSettings: { connectionManager: manager }, chatCompletionSettings: {} };
-    const a = createActivation({ getContext: () => context, uuid: () => '01234567-8901-2345-6789-012345678901', execute: async (name, value) => {
-        history.push([name, value]); if (name === 'profile-create') { manager.profiles.push({ id: value, name: value }); manager.selectedProfile = value; return value; }
-        if (name === 'profile') manager.selectedProfile = value;
-    } });
-    await a.activate('glm-5.2'); assert.equal(manager.profiles[0].name, 'Existing provider'); assert.equal(manager.profiles.length, 3);
-    assert.ok(history.some(([n, v]) => n === 'api-url' && v === GO_MARKER)); await a.restore(); assert.equal(manager.selectedProfile, a.recoveryProfile);
-    await a.activate('glm-5.2'); manager.selectedProfile = 'old'; const count = history.length; await a.restore(); assert.equal(history.length, count);
+test('ST YAML object and list semantics preserved; invalid session replaced', () => {
+    const parse = text => { assert.equal(text, 'fixture YAML'); return [{ 'X-One': 'one', 'x-opencode-session': 'bad\nvalue' }, null, ['skip'], { 'X-Two': 'two' }]; };
+    assert.deepEqual(JSON.parse(addGoHeaders('fixture YAML', 'generated', parse)), { 'X-One': 'one', 'X-Two': 'two', 'User-Agent': USER_AGENT, 'x-opencode-session': 'generated' });
+    for (const invalid of ['', 123, 'a'.repeat(129), '\tbad']) assert.equal(JSON.parse(addGoHeaders(JSON.stringify({ 'x-opencode-session': invalid }), 'new', JSON.parse))['x-opencode-session'], 'new');
 });
-test('activation stops before touching connections when recovery fails or overrides exist', async () => {
-    const context = { extensionSettings: { connectionManager: { profiles: [] } }, chatCompletionSettings: { custom_include_headers: 'Authorization: old' } };
-    let calls = 0; const a = createActivation({ getContext: () => context, execute: async () => { calls++; return ''; } });
-    await assert.rejects(a.activate('glm-5.2')); assert.equal(calls, 0); context.chatCompletionSettings = {};
-    await assert.rejects(a.activate('glm-5.2')); assert.equal(calls, 1);
+test('malformed Go YAML fails clearly without forwarding/logging its content', async () => {
+    const h = harness(); const response = await send(h, payload({ custom_include_headers: 'FAKE_PRIVATE_VALUE: [' }));
+    assert.equal(response.status, 400); assert.ok(!(await response.text()).includes('FAKE_PRIVATE_VALUE')); assert.equal(h.calls.length, 0);
 });
-test('replay cache exact-match isolation and edited messages are not silently replaced', () => {
-    const cache = new ReplayCache(); const m = { role: 'assistant', content: 'hello', go_bridge: { protocol: 'messages', model: 'claude-haiku-5-5', blocks: [] } };
-    cache.remember('a', 'claude-haiku-5-5', m);
-    const input = base('claude-haiku-5-5', { messages: [{ role: 'assistant', content: 'hello' }] });
-    assert.ok(cache.restore('a', input).messages[0].go_bridge); assert.ok(!cache.restore('b', input).messages[0].go_bridge);
-    input.messages[0].content = 'edited'; assert.ok(!cache.restore('a', input).messages[0].go_bridge);
+test('chat switching and retry retain opaque per-chat IDs; tabs and no-chat scope separated', async () => {
+    const h = harness(); const ids = [];
+    for (const chat of ['chat-A', 'chat-A', 'chat-B', null, 'chat-A', null]) { h.setChat(chat); await send(h); ids.push(JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session']); }
+    assert.equal(ids[0], ids[1]); assert.equal(ids[0], ids[4]); assert.equal(ids[3], ids[5]); assert.equal(new Set(ids).size, 3);
+    assert.ok(ids.every(id => !id.includes('chat'))); const tab = harness(); await send(tab); assert.ok(!ids.includes(JSON.parse(sentBody(tab).custom_include_headers)['x-opencode-session']));
 });
-test('replay rejects edited reasoning and ambiguous repeated visible answers', () => {
-    const cache = new ReplayCache(); const model = 'claude-haiku-5-5';
-    const message = { role: 'assistant', content: 'same', reasoning_content: 'first', go_bridge: { protocol: 'messages', model, blocks: [{ type: 'thinking', thinking: 'first', signature: 'one' }] } };
-    cache.remember('conversation', model, message);
-    assert.throws(() => cache.restore('conversation', base(model, { messages: [{ role: 'assistant', content: 'same', reasoning_content: 'edited' }] })), /不一致/);
-    assert.ok(cache.restore('conversation', base(model, { messages: [{ role: 'assistant', content: 'same' }] })).messages[0].go_bridge);
-    cache.remember('conversation', model, { ...message, reasoning_content: 'second', go_bridge: { ...message.go_bridge, blocks: [] } });
-    assert.throws(() => cache.restore('conversation', base(model, { messages: [{ role: 'assistant', content: 'same' }] })), /多份/);
+test('status and generation for the same chat use the same session; supplied valid session wins', async () => {
+    const h = harness(); await send(h); const a = JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session'];
+    await h.scope.fetch(STATUS_PATH, { method: 'POST', body: JSON.stringify(payload()) }); assert.equal(JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session'], a);
+    await send(h, payload({ custom_include_headers: '{"x-opencode-session":"caller-fixed"}' })); assert.equal(JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session'], 'caller-fixed');
+});
+test('Request input keeps headers, signal, credentials, options, source body and init overrides', async () => {
+    const h = harness(); const ac = new AbortController();
+    const req = new Request(origin + GENERATE_PATH, { method: 'POST', headers: { 'X-CSRF-Token': 'FAKE_CSRF' }, credentials: 'include', cache: 'no-store', signal: ac.signal, body: JSON.stringify(payload()) });
+    await h.scope.fetch(req); const outgoing = h.calls[0][0]; assert.ok(outgoing instanceof Request); assert.equal(req.bodyUsed, false);
+    assert.equal(outgoing.headers.get('x-csrf-token'), 'FAKE_CSRF'); assert.equal(outgoing.credentials, 'include'); assert.equal(outgoing.cache, 'no-store');
+    ac.abort(); assert.equal(outgoing.signal.aborted, true); assert.equal((await outgoing.json()).secret_id, 'FAKE_SECRET_REFERENCE');
+    await h.scope.fetch(req, { signal: new AbortController().signal, body: JSON.stringify(payload({ model: 'any-model' })) }); assert.equal((await h.calls[1][0].json()).model, 'any-model');
+});
+test('Response identity, fragmented SSE bytes, errors and cancellation remain owned by native fetch', async () => {
+    const bytes = new TextEncoder().encode('data: {"choices":[{"delta":{"content":"你好","reasoning_content":"t"}}]}\r\n\r\ndata: [DONE]\n\n');
+    let offset = 0; let cancelled = false;
+    const response = new Response(new ReadableStream({ pull(c) { if (offset === bytes.length) c.close(); else c.enqueue(bytes.slice(offset, ++offset)); }, cancel() { cancelled = true; } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    const h = harness({ fetch: async () => response }); assert.equal(await send(h, payload({ stream: true })), response); assert.deepEqual(new Uint8Array(await response.arrayBuffer()), bytes);
+    const errorResponse = Response.json({ error: { message: 'native error' } }, { status: 429 }); const e = harness({ fetch: async () => errorResponse }); assert.equal(await send(e), errorResponse);
+    const broken = new Error('native network failure'); await assert.rejects(send(harness({ fetch: async () => { throw broken; } })), e => e === broken);
+    const pending = new Response(new ReadableStream({ cancel() { cancelled = true; } })); const p = harness({ fetch: async () => pending }); await (await send(p)).body.cancel(); assert.equal(cancelled, true);
+});
+test('disable restores fetch and leaves settings untouched; later wrapper becomes inert safely', async () => {
+    const h = harness(); h.installation.dispose(); assert.equal(h.scope.fetch, h.previous);
+    const i = harness(); const inner = i.scope.fetch; const later = (...args) => inner(...args); i.scope.fetch = later; i.installation.dispose();
+    assert.equal(i.scope.fetch, later); const init = { method: 'POST', body: JSON.stringify(payload()) }; await i.scope.fetch(GENERATE_PATH, init); assert.equal(i.calls[0][1], init);
+});
+test('disabled setting and disable during asynchronous body read cause exact passthrough', async () => {
+    const h = harness({ enabled: () => false }); const init = { method: 'POST', body: JSON.stringify(payload()) }; await h.scope.fetch(GENERATE_PATH, init); assert.equal(h.calls[0][1], init);
+    const p = harness(); const promise = p.scope.fetch(GENERATE_PATH, init); p.installation.dispose(); await promise; assert.equal(p.calls[0][1], init);
+});
+test('session generator is lazy and stable even across wrapper reinstalls', () => {
+    let count = 0; const ids = createSessionIds(() => `fixture_${++count}`); assert.equal(count, 0); assert.equal(ids.forConversation('a'), 'fixture_1'); assert.equal(ids.forConversation('a'), 'fixture_1');
+});
+test('request-start chat snapshot remains stable if UI changes chat while parsing body', async () => {
+    const h = harness(); h.setChat('chat-A'); const first = send(h); h.setChat('chat-B'); await first;
+    const a = JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session']; h.setChat('chat-A'); await send(h);
+    assert.equal(JSON.parse(sentBody(h).custom_include_headers)['x-opencode-session'], a);
+});
+test('mixed-case duplicate sessions use last occurrence in YAML list order', () => {
+    const raw = JSON.stringify([{ 'x-opencode-session': 'first' }, { 'X-OpenCode-Session': 'middle' }, { 'x-opencode-session': 'last' }]);
+    assert.equal(JSON.parse(addGoHeaders(raw, 'generated', JSON.parse))['x-opencode-session'], 'last');
+});
+test('abort while reading an unfinished Request body settles promptly without forwarding', async () => {
+    const h = harness(); const ac = new AbortController(); let bodyController;
+    const req = new Request(origin + GENERATE_PATH, { method: 'POST', body: new ReadableStream({ start(c) { bodyController = c; c.enqueue(new TextEncoder().encode('{')); } }), duplex: 'half', signal: ac.signal });
+    const pending = h.scope.fetch(req); ac.abort();
+    const timeout = setTimeout(() => { bodyController.close(); }, 500);
+    try { await assert.rejects(pending, { name: 'AbortError' }); assert.equal(h.calls.length, 0); }
+    finally { clearTimeout(timeout); bodyController.close(); }
+});
+test('used Request with valid replacement body still receives Go headers', async () => {
+    const h = harness(); const req = new Request(origin + GENERATE_PATH, { method: 'POST', body: '{}' }); await req.text();
+    await h.scope.fetch(req, { body: JSON.stringify(payload()) }); const sent = await h.calls[0][0].json();
+    assert.equal(JSON.parse(sent.custom_include_headers)['User-Agent'], USER_AGENT);
 });

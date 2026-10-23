@@ -1,11 +1,11 @@
-name: Mock and installer tests
+name: Transparent extension tests
 on:
   push:
   pull_request:
 permissions:
   contents: read
 jobs:
-  test:
+  portable:
     strategy:
       fail-fast: false
       matrix:
@@ -14,14 +14,39 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: Verify release manifest is current
-        run: |
-          node scripts/prepare-release.mjs
-          git diff --exit-code -- release-manifest.json
-      - name: Run all portable tests without dependencies
-        run: node scripts/test.mjs
-      - name: Build distribution
-        run: node scripts/build.mjs
+      - run: node scripts/test.mjs
+      - run: node scripts/build.mjs
+  native-reference:
+    strategy:
+      fail-fast: false
+      matrix:
+        st: ['1.14.0', '1.18.0']
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/checkout@v4
+        with:
+          repository: SillyTavern/SillyTavern
+          ref: ${{ matrix.st }}
+          path: .reference
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /package.json
+            /src/util.js
+            /src/endpoints/backends/chat-completions.js
+            /public/lib.js
+            /public/script.js
+      - run: node --test tests/native-reference.mjs
+        env:
+          ST_REFERENCE_ROOT: .reference

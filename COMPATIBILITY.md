@@ -1,39 +1,35 @@
-# 兼容矩阵
+# 兼容范围
 
-状态含义：**tested/mock** = 自动化夹具通过；**source-inspected** = 只读确认实现路径；**live-unverified** = 未在实际服务/账号执行。这里没有任何真实账号推理验证。
+## 路径矩阵
 
-| 环境/路径 | 实现范围 | 证据与限制 |
+| 原生调用 | 匹配地址 | 处理 |
 |---|---|---|
-| ST 1.18.0 主聊天 | Go 专用 Custom / OpenAI reverse_proxy 经过当前页面 fetch 到同源插件 | source-inspected + tested/mock；真实启动 live-unverified |
-| ST ChatCompletionService / ConnectionManagerRequestService | 同原生 generate/status 路径 | source-inspected + tested/mock 请求形状；未枚举全部扩展 |
-| 记忆扩展 generateQuietPrompt/generateRaw、文本表情分类 | 使用当前原生 Chat 连接的分支可接入 | source-inspected；全部功能组合 live-unverified |
-| LittleWhiteBox 3.1.9 Host Client | 原生 generate/status；三协议流/非流工具输出 | 真实客户端源模块 + mock 上游，6 个测试；不是运行 LWB UI |
-| LWB OpenAI SDK / vector 直接 fetch | 明确 Go Chat URL、当前页面 fetch 且启用实验开关，或公开 API | Request/string mock；SDK 捕获旧 fetch、独立 realm 不保证覆盖 |
-| LWB 后台 loopback client | 浏览器路由无法接管 | 源码固定原生路径；需该插件提供适配接口或修改自身后台，不会自动生效 |
-| 图像描述专用 endpoint、翻译专用 endpoint | 不接管不同的后端路由 | 可由扩展作者接公开 API；不等于全酒馆模型入口 |
-| 桌面 Node、可写插件目录的 VPS | 架构支持前后端分装 | 安装者自行启用/重启；实际安装 live-unverified |
-| Docker/Podman | 架构支持挂载后端 plugins 和前端目录 | 容器内 Node>=20、权限、持久卷、TLS/代理需安装者配置；live-unverified |
-| 托管平台允许服务器插件 | 条件支持 | 须有认证、CSRF、Node fetch/Web Streams 和管理员安装权限 |
-| 只准浏览器扩展的托管平台、静态网页 | 本发行版不支持 | 无法靠浏览器设置真实 UA，也没有已实现的独立 sidecar |
-| 其他酒馆版本/分支 | 运行时检测，缺少接口则拒绝或手动配置 | 不承诺支持全部旧版本；req.user/profile、req.session.csrfToken 改动需适配 |
+| Custom `/api/backends/chat-completions/generate` | `https://opencode.ai/inference/go/openai/v1`，可有一个末尾 `/` | 只补 UA/session |
+| Custom `/api/backends/chat-completions/status` | 上述地址或 `https://opencode.ai/inference/go/v1` | 只补 UA/session；地址不变 |
+| OpenAI + `reverse_proxy`，包括小白 X 独立 Host OpenAI 客户端 | 任意 | 原样透传；ST 该分支不使用 Custom 请求头 |
+| Claude / Responses / Gemini 等其他来源 | 任意 | 原样透传，未支持补头 |
+| 直接浏览器请求 Go、后台、iframe、Worker、旧 fetch 引用 | 任意 | 不自动覆盖 |
+| Zen 按量、旧 `/zen/go/v1`、其他域名/近似域名、含查询或片段的地址 | 任意 | 原样透传 |
 
-安装脚本及平台验证另见 [INSTALL.md](INSTALL.md) 和 [TESTING.md](TESTING.md)；仓库根 manifest 支持 Git 扩展安装器，后端仍需管理员脚本。
+只匹配当前页面同源的上述两个酒馆路由，POST JSON、`chat_completion_source: custom`。不支持把完整 `/chat/completions` URL 填入 Base URL。不会改变其他供应商请求的参数、外层请求头或正文。
 
-## 协议能力（转换能力不等于模型能力）
+模型目录与聊天基地址不同。透明补头不会纠正原生服务器的路径拼接。选择当前官方文档中的 Chat 模型并在原生栏手工填写模型 ID；不把 Responses/Messages 模型当成 Chat，也不自动筛除/替换用户的模型。
 
-| 功能 | Chat | Responses → Chat | Messages → Chat |
-|---|---|---|---|
-| 非流式 / SSE | tested/mock | tested/mock | tested/mock |
-| 工具定义、调用、结果往返 | 原样保留 | function_call / function_call_output | tool_use / tool_result |
-| 工具流、空参数 `{}` | 原样保留 | 增量并核验完整结果 | 增量，空参数补合法 JSON |
-| 图片输入 | 原样保留 | input_image 保留 URL/detail | HTTPS URL 或 base64 image；非 auto detail 拒绝 |
-| 思考输出/历史 | reasoning_content 原样 | summary + encrypted_content 元数据 | thinking/signature/redacted 元数据 |
-| 思考设置 | 调用方值/默认 | reasoning.effort | thinking / output_config.effort；上游可拒绝 |
-| 取消/超时/错误 | tested/mock | tested/mock | tested/mock |
-| schema 输出 | 传递 | text.format | 明确拒绝不能保真的 response_format |
-| strict tools | 传递 | 传递 | 当前转换明确拒绝 |
-| 特定模型 vision/tools/reasoning | **unverified** | **unverified** | **unverified** |
+## 版本与环境证据
 
-通用不支持：Gemini 协议、音频、图片生成、内置 web-search、legacy functions/function_call、自定义 YAML 覆盖、原生提示词后处理。模型选择仅为实时 Go 目录与已核实协议映射的交集；新增/协议变化需要更新映射，不能从名称推断。
+| 范围 | 已验证 | 未验证 |
+|---|---|---|
+| ST 1.14.0 | 官方标签源码，实际 Custom status/generate 函数及 mergeObjectWithYaml 在隔离 mock 环境执行 | 完整浏览器 UI、真实 Go 推理、真实部署 |
+| ST 1.18.0 | 只读源码，同样实际路由函数与头合并 mock；公开 YAML 库与 Custom 手填模型/跳过状态检查代码 | 完整运行环境安装、真实 Go 推理 |
+| 小白 X 3.1.9 | 实际 Host OpenAI 客户端模块流/非流透传测试，明确其不是 Custom 分支 | 其他模块、背景任务、独立 SDK 的 Go 补头 |
+| 其他 ST 版本/分支 | 相同原生接口可能适用 | 未测试，不承诺全版本 |
+| macOS / Windows / Linux | 便携 Node mock 可在 CI 运行 | 对应平台真实酒馆安装 |
+| Docker / 托管 | 架构无需额外服务端插件 | 平台需允许前端扩展及 Custom 外连，限制各异 |
 
-没有按量回退，不代表账户 Extra usage 不会扣款。403/429 不触发客户端伪装、换域或重试。
+Headers 的 YAML 对象及对象数组通过酒馆已有 YAML 解析器读取，再按原生合并语义输出 JSON（合法 YAML）。除两个客户端头外全部保留；已有 UA 会改为真实扩展 UA。已有 session 若满足 `^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$` 则保留，混合大小写重复项按输入顺序取最后项；无效值替换为随机 ID。格式错误仅对匹配的 Go 请求报错，不打印输入头。
+
+同一页面内按群组、角色和聊天 ID 区分会话，只有随机值发送给 Go。未打开聊天时使用独立页面 ID；多个无聊天后台式任务无法从原生请求中可靠区分。页面刷新会重新生成，跨标签页不会共享映射；原调用方可提供稳定合法 session 以跨刷新延续。
+
+本扩展不读酒馆 secrets 接口、没有 Key 输入框、没有日志输出、不新设 Authorization。原生认证、CSRF、网络代理、重定向、请求体限制、错误和取消行为继续由酒馆负责。SSE 原 Response/字节流直接返回，原生错误也不包装成成功；不能承诺改变某个酒馆版本自身的流错误处理。
+
+思考、工具和图片字段在浏览器原生请求中保持原值；酒馆本身仍可能按模型/来源筛选字段。本扩展不补造这些能力，不承担协议适配器的职责。
