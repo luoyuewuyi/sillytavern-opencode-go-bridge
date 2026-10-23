@@ -147,3 +147,11 @@ test('orphan preparation journal gives explicit safe recovery instructions', asy
     await assert.rejects(runInstaller(opts(root)), /No readable journal.*no destination changes/);
     assert.ok(!await present(dest(root, 'server')));
 });
+
+test('rollback dry-run reports exactly the recorded components and changes nothing', async t => {
+    const root = await fixture(t); const installed = await runInstaller({ ...opts(root), backendOnly: true });
+    const before = await readFile(join(root, 'config.yaml'), 'utf8');
+    const plan = await runInstaller({ stRoot: root, rollback: installed.transaction, dryRun: true });
+    assert.deepEqual(plan.targets, [dest(root, 'server')]); assert.equal(await readFile(join(root, 'config.yaml'), 'utf8'), before);
+    assert.ok(await present(join(dest(root, 'server'), 'index.mjs')));
+});

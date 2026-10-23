@@ -157,13 +157,14 @@ export async function runInstaller(options = {}, io = {}) {
     const root = await safePath(discovered);
     if (root === parse(root).root || !await isStRoot(root) || await realpath(root) !== root) fail('Target is not a valid, non-symlink SillyTavern root.');
     const state = join(root, STATE_DIR); await safePath(state); await safePath(join(state, 'transactions'));
-    const components = options.backendOnly ? ['server'] : ['server', 'frontend'];
+    const action = options.rollback ? 'rollback' : options.uninstall ? 'uninstall' : 'install';
+    if (options.rollback && !/^[0-9TZ-]+-[a-f0-9]{12}$/.test(options.rollback)) fail('Invalid rollback transaction ID.');
+    const components = options.rollback ? (await readRecord(join(state, 'transactions', options.rollback), root)).components : options.backendOnly ? ['server'] : ['server', 'frontend'];
     for (const key of components) {
         const target = join(root, COMPONENTS[key].relative); await safePath(target);
         if (inside(source, target) || inside(target, source)) fail('Installer source overlaps a destination. For a frontend Git checkout inside SillyTavern, use --backend-only.');
         await owned(target, key);
     }
-    const action = options.rollback ? 'rollback' : options.uninstall ? 'uninstall' : 'install';
     if (action !== 'install' && options.enableServerPlugins) fail('--enable-server-plugins applies only to install.');
     const configPath = join(root, 'config.yaml'); await safePath(configPath);
     const configBytes = await readFile(configPath); if (configBytes.length > 2 * 1024 * 1024) fail('config.yaml is too large for safe scalar editing.');

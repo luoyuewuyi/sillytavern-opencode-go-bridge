@@ -90,7 +90,7 @@ plugins/opencode-go-bridge/
 源码包中：仓库根目录前端，`server/` 后端，`tests/` 自动化测试，`evidence/` 测试记录和匿名公开目录快照。Node >=20；验证环境 Node 22.23.1。无需安装依赖：
 
 ```sh
-node --test tests/*.test.mjs
+node scripts/test.mjs
 node scripts/prepare-release.mjs
 node scripts/build.mjs
 ```

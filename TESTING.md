@@ -2,7 +2,7 @@
 
 本地验证：Node 22.23.1，零依赖安装、零真实Key/推理调用。未启动或安装到任何既有酒馆。
 
-- **88/88 portable tests 通过**：`node --test tests/*.test.mjs`。其中20项是安装器合成夹具，其余68项是协议、身份、路由与面板mock。
+- **89/89 portable tests 通过**：`node scripts/test.mjs`。其中21项是安装器合成夹具，其余68项是协议、身份、路由与面板mock。
 - **6/6 LittleWhiteBox 3.1.9 真实 Host Client 源模块 + mock 上游通过**：三个协议各自流式和非流式工具输出；不代表运行LWB UI。第三方源码不随仓库分发。
 - GitHub Actions 在 Ubuntu、macOS、Windows × Node20/22 运行portable测试和构建：[本仓库 Actions](https://github.com/luoyuewuyi/sillytavern-opencode-go-bridge/actions)。以具体commit的绿色结果为准。
 
@@ -21,7 +21,7 @@
 **tested/mock**：合成请求和临时夹具。**source-inspected**：ST1.18.0中间件顺序和客户端调用路径只读核实。**live-unverified**：真实Go订阅推理、各模型工具/图片能力、完整ST服务/浏览器、多用户登录、所有代理容器配置与第三方扩展组合。不能把mock/CI等同这些真实环境验证。
 
 ```sh
-node --test tests/*.test.mjs
+node scripts/test.mjs
 # 可选，只读现有LWB源码，不指定凭据或用户数据目录：
 LWB_REFERENCE_ROOT=/path/to/LittleWhiteBox node --test tests/local-reference.mjs
 node scripts/prepare-release.mjs

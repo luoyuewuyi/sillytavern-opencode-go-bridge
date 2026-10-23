@@ -22,6 +22,6 @@ jobs:
           node scripts/prepare-release.mjs
           git diff --exit-code -- release-manifest.json
       - name: Run all portable tests without dependencies
-        run: node --test tests/*.test.mjs
+        run: node scripts/test.mjs
       - name: Build distribution
         run: node scripts/build.mjs

@@ -15,11 +15,11 @@
     "server/protocols.mjs": "5b065639477d755bc8235562fb30b7895f1973db19fc2b857a7710386e57b75f",
     "server/replay.mjs": "e029ade4bfeef5ccbfde4929248b56195d2fda0c57454baa460c4182a935b723",
     "server/sse.mjs": "5072fed1ba85ca868f1e3503a66de62ba8ba1e83a129a1ccd0af6d55e525ac2f",
-    "package.json": "8305b576122e9dbef7cda0d478680555f54a0329619216416abcb039bc84be39",
+    "package.json": "0b9329b2b545d31c9e6a057c6bdac119e31b3c42c395e791015f091e48661327",
     ".gitattributes": "74f066599d3fe2817756c3e532a869d370d4294c5c0a188487da2855f9b2378e",
     "install.sh": "81dfb2adebd13b0f7c5993cee005c500ecaa358fa7450eb0891c04b640732c3a",
     "install.ps1": "1ed9001337618f7563eaeeb0aec841ba3975909348af3a10449d7d9dd6f6a313",
-    "install/install.mjs": "b273f386d8c457158f5394435b700a3ef53e9e01b17e9ffb6f963d231abb1ab2",
+    "install/install.mjs": "e4825ee392e17fef606ed9cc64ee6151dac8b0e389be8161d42e7dc2bb03959d",
     "install/layout.mjs": "ea5d7ad723abb583d5f46850d407e77c4c4a3e158de88446f5bfdd40d009e24a"
   }
 }
